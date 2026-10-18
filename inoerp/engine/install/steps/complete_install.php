@@ -105,18 +105,19 @@ if ($_GET['db_type'][0] == 'production') {
 }
 
 try {
- importSQL($filename, $dbc);
- // Tell user that the process is completed
- echo '<script language="javascript">document.getElementById("information").innerHTML="Process completed"</script>';
- echo '<ul class="list-unstyled">';
- echo "<li>All tables have been Successfully imported</li>";
- echo "<li>Verify that the file install.php is removed from home directory. If not, delete it.</li>";
- echo "<li><a href='" . HOME_URL . "'>Go to the home page </a> & Login to the system  with default user name/password :inoerp/inoerp and reset the password.</li>";
+  importSQL($filename, $dbc);
+  // Tell user that the process is completed
+  echo '<script language="javascript">document.getElementById("information").innerHTML="Process completed"</script>';
+  echo '<ul class="list-unstyled">';
+  echo "<li>All tables have been Successfully imported</li>";
+  echo "<li>Verify that the file install.php is removed from home directory. If not, delete it.</li>";
+  echo "<li><strong>IMPORTANT:</strong> No default user is created. You must register a new admin user via the registration page or use the CLI setup command.</li>";
+  echo "<li><a href='" . HOME_URL . "'>Go to the home page </a> and follow the first-time setup wizard to create your admin account.</li>";
 
- echo '</ul>';
- unlink('install.php');
+  echo '</ul>';
+  unlink('install.php');
 } catch (Exception $e) {
- echo "<br>Tables import fialed" . $e->getMessage();
+  echo "<br>Tables import failed: " . $e->getMessage();
 }
 ?>
      

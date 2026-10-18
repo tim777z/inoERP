@@ -1,0 +1,21 @@
+includes:
+    - vendor/phpstan/phpstan/phpstan.neon
+
+parameters:
+    level: 5
+    paths:
+        - inoerp/includes
+        - inoerp/modules
+        - inoerp/extensions
+    excludePaths:
+        - inoerp/tparty/*
+        - inoerp/engine/install/*
+        - inoerp/includes/basics/basics.inc
+        - inoerp/includes/functions/functions.inc
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        - '#Undefined variable#'
+        - '#Access to an undefined property#'
+        - '#Variable \$\w+ might not be defined#'
