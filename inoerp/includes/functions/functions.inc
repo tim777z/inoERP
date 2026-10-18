@@ -830,8 +830,126 @@ function query_result_issue($result) {
  }
 }
 
+/**
+ * Security helper class for input validation and sanitization
+ */
+class SecurityHelper {
+    /**
+     * Sanitize string for safe use in SQL LIKE clauses (parameterized queries preferred)
+     * @param string $value
+     * @return string
+     */
+    public static function sanitizeLike(string $value): string {
+        // Escape wildcards for LIKE queries
+        return str_replace(['%', '_'], ['\%', '\_'], $value);
+    }
+
+    /**
+     * Sanitize string for safe HTML output (XSS prevention)
+     * @param string $value
+     * @return string
+     */
+    public static function sanitizeHtml(string $value): string {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    /**
+     * Sanitize string for safe use in shell commands
+     * @param string $value
+     * @return string
+     */
+    public static function sanitizeShell(string $value): string {
+        return escapeshellarg($value);
+    }
+
+    /**
+     * Validate and sanitize email address
+     * @param string $email
+     * @return string|false
+     */
+    public static function sanitizeEmail(string $email) {
+        $email = trim($email);
+        if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $email;
+        }
+        return false;
+    }
+
+    /**
+     * Validate and sanitize integer
+     * @param mixed $value
+     * @param int|null $min
+     * @param int|null $max
+     * @return int|false
+     */
+    public static function sanitizeInt($value, ?int $min = null, ?int $max = null) {
+        $value = filter_var($value, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => $min, 'max_range' => $max]
+        ]);
+        return $value !== false ? $value : false;
+    }
+
+    /**
+     * Validate and sanitize float
+     * @param mixed $value
+     * @param float|null $min
+     * @param float|null $max
+     * @return float|false
+     */
+    public static function sanitizeFloat($value, ?float $min = null, ?float $max = null) {
+        $value = filter_var($value, FILTER_VALIDATE_FLOAT, [
+            'options' => ['min_range' => $min, 'max_range' => $max]
+        ]);
+        return $value !== false ? $value : false;
+    }
+
+    /**
+     * Sanitize alphanumeric string (strict)
+     * @param string $value
+     * @param bool $allowUnderscore
+     * @param bool $allowHyphen
+     * @return string
+     */
+    public static function sanitizeAlphanumeric(string $value, bool $allowUnderscore = true, bool $allowHyphen = false): string {
+        $pattern = '/[^a-zA-Z0-9' . ($allowUnderscore ? '_' : '') . ($allowHyphen ? '-' : '') . ']/';
+        return preg_replace($pattern, '', $value);
+    }
+
+    /**
+     * Generate secure random token
+     * @param int $length
+     * @return string
+     */
+    public static function generateToken(int $length = 32): string {
+        return bin2hex(random_bytes($length));
+    }
+
+    /**
+     * Constant-time string comparison (timing attack prevention)
+     * @param string $a
+     * @param string $b
+     * @return bool
+     */
+    public static function timingSafeEquals(string $a, string $b): bool {
+        return hash_equals($a, $b);
+    }
+}
+
+/**
+ * Legacy mysql_prep function - DEPRECATED
+ * Use SecurityHelper methods or parameterized queries instead.
+ * This function now provides basic sanitization for backward compatibility.
+ * @param mixed $value
+ * @return mixed
+ * @deprecated Use SecurityHelper::sanitizeHtml() for output, parameterized queries for SQL
+ */
 function mysql_prep($value) {
- return $value;
+    if (is_string($value)) {
+        // Basic sanitization - strip null bytes and control characters
+        $value = str_replace("\0", '', $value);
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
+    }
+    return $value;
 }
 
 function ino_showDecimal($number, $decimal = '.') {
@@ -2179,9 +2297,287 @@ function update_htaccessFile() {
  } else {
   echo "<h2>.htaccess file is missing in home directtory </h2>";
  }
- fclose($hta_file);
- fclose($write_file);
- return $return;
+fclose($hta_file);
+  fclose($write_file);
+  return $return;
+}
+
+/**
+ * Secure Search Query Builder
+ * Builds parameterized SQL queries for search functionality to prevent SQL injection
+ */
+class SecureSearchBuilder {
+    /**
+     * Build a secure WHERE clause with parameterized values
+     * @param array $search_array Array of field names to search
+     * @param array $input GET/POST input array
+     * @param array &$params Output parameter array (passed by reference)
+     * @param string $table_name Table name for validation
+     * @return array ['where_clause' => string, 'params' => array, 'count' => int]
+     */
+    public static function buildWhereClause(array $search_array, array $input, array &$params, string $table_name = ''): array {
+        $whereFields = [];
+        $noof_criteria = 0;
+        $paramCounter = 0;
+        
+        // Get valid column names from database for validation
+        $validColumns = [];
+        if (!empty($table_name) && class_exists('dbObject')) {
+            try {
+                global $dbc;
+                if (!empty($dbc->connection)) {
+                    $stmt = $dbc->connection->prepare("SHOW COLUMNS FROM `$table_name`");
+                    $stmt->execute();
+                    $validColumns = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+                }
+            } catch (Exception $e) {
+                // Fallback: allow alphanumeric column names
+                error_log("SecureSearchBuilder: Could not fetch columns for $table_name: " . $e->getMessage());
+            }
+        }
+        
+        foreach ($search_array as $key => $column) {
+            // Validate column name
+            if (!empty($validColumns) && !in_array($column, $validColumns)) {
+                // Also allow if it matches alphanumeric pattern
+                if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $column)) {
+                    continue;
+                }
+            } elseif (empty($validColumns) && !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $column)) {
+                continue;
+            }
+            
+            // Handle first search value (index 0)
+            if (!empty($input[$column][0])) {
+                $value = is_array($input[$column]) ? $input[$column][0] : $input[$column];
+                $value = trim($value);
+                
+                if (strpos($value, ',') !== false) {
+                    // IN clause with multiple values
+                    $values = array_map('trim', explode(',', $value));
+                    $placeholders = [];
+                    foreach ($values as $v) {
+                        $paramName = ":param_{$paramCounter++}";
+                        $placeholders[] = $paramName;
+                        $params[$paramName] = $v;
+                    }
+                    $whereFields[] = "`$column` IN (" . implode(', ', $placeholders) . ")";
+                } else {
+                    // Single value - detect operator
+                    $result = self::parseSearchCriteria($column, $value, $params, $paramCounter);
+                    $whereFields[] = $result['condition'];
+                    $paramCounter = $result['paramCounter'];
+                }
+                $noof_criteria++;
+            }
+            
+            // Handle second search value (index 1) - range searches
+            if (!empty($input[$column][1])) {
+                $value = is_array($input[$column]) ? $input[$column][1] : $input[$column];
+                $value = trim($value);
+                
+                if (strlen($value) > 0) {
+                    $operator = $value[0];
+                    $actualValue = substr($value, 1);
+                    
+                    if (in_array($operator, ['>', '<', '>=', '<='])) {
+                        $paramName = ":param_{$paramCounter++}";
+                        $whereFields[] = "`$column` $operator $paramName";
+                        $params[$paramName] = $actualValue;
+                        $noof_criteria++;
+                    }
+                }
+            }
+        }
+        
+        $whereClause = '';
+        if (!empty($whereFields)) {
+            $whereClause = ' WHERE ' . implode(' AND ', $whereFields);
+        }
+        
+        return [
+            'where_clause' => $whereClause,
+            'params' => $params,
+            'count' => $noof_criteria
+        ];
+    }
+    
+    /**
+     * Parse search criteria and return parameterized condition
+     * @param string $column
+     * @param string $value
+     * @param array $params
+     * @param int $paramCounter
+     * @return array ['condition' => string, 'paramCounter' => int]
+     */
+    private static function parseSearchCriteria(string $column, string $value, array &$params, int &$paramCounter): array {
+        $firstChar = $value[0] ?? '';
+        $firstTwoChars = substr($value, 0, 2);
+        $restOfString = substr($value, 1);
+        
+        $isOperator = in_array($firstChar, ['=', '>', '<']) || in_array($firstTwoChars, ['!=', '>=', '<=']);
+        $isIdColumn = (strpos($column, '_ID') !== false || strpos($column, '_id') !== false);
+        
+        if (!$isOperator && $isIdColumn) {
+            // ID column exact match
+            if (strtolower($value) === 'null') {
+                return ['condition' => "`$column` IS NULL", 'paramCounter' => $paramCounter];
+            } else {
+                $paramName = ":param_{$paramCounter++}";
+                $params[$paramName] = $value;
+                return ['condition' => "`$column` = $paramName", 'paramCounter' => $paramCounter];
+            }
+        } elseif ($firstChar === '=') {
+            if (strtolower($restOfString) === 'null') {
+                return ['condition' => "`$column` IS NULL", 'paramCounter' => $paramCounter];
+            } else {
+                $paramName = ":param_{$paramCounter++}";
+                $params[$paramName] = $restOfString;
+                return ['condition' => "`$column` = $paramName", 'paramCounter' => $paramCounter];
+            }
+        } elseif ($firstTwoChars === '!=') {
+            $paramName = ":param_{$paramCounter++}";
+            $params[$paramName] = $restOfString;
+            return ['condition' => "`$column` != $paramName", 'paramCounter' => $paramCounter];
+        } elseif ($firstChar === '>') {
+            $paramName = ":param_{$paramCounter++}";
+            $params[$paramName] = $restOfString;
+            return ['condition' => "`$column` > $paramName", 'paramCounter' => $paramCounter];
+        } elseif ($firstChar === '<') {
+            $paramName = ":param_{$paramCounter++}";
+            $params[$paramName] = $restOfString;
+            return ['condition' => "`$column` < $paramName", 'paramCounter' => $paramCounter];
+        } else {
+            // LIKE search (default)
+            $paramName = ":param_{$paramCounter++}";
+            // Escape wildcards for literal search, then add wildcards
+            $escapedValue = str_replace(['%', '_'], ['\%', '\_'], $value);
+            $params[$paramName] = "%$escapedValue%";
+            return ['condition' => "`$column` LIKE $paramName", 'paramCounter' => $paramCounter];
+        }
+    }
+    
+    /**
+     * Build complete search query with pagination
+     * @param string $table_name
+     * @param string $whereClause
+     * @param array $params
+     * @param string $orderBy
+     * @param string $orderDir
+     * @param int $limit
+     * @param int $offset
+     * @param string $groupBy
+     * @param string $sumElement
+     * @return array ['sql' => string, 'count_sql' => string, 'download_sql' => string, 'params' => array]
+     */
+    public static function buildSearchQuery(
+        string $table_name,
+        string $whereClause,
+        array $params,
+        string $orderBy = '',
+        string $orderDir = '',
+        int $limit = 0,
+        int $offset = 0,
+        string $groupBy = '',
+        string $sumElement = ''
+    ): array {
+        // Validate table name
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $table_name)) {
+            throw new InvalidArgumentException("Invalid table name");
+        }
+        
+        // Validate order by column
+        $orderByClause = '';
+        if (!empty($orderBy) && preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $orderBy)) {
+            $orderDir = strtoupper($orderDir);
+            if (!in_array($orderDir, ['ASC', 'DESC'])) {
+                $orderDir = 'ASC';
+            }
+            $orderByClause = " ORDER BY `$orderBy` $orderDir";
+        }
+        
+        // Validate group by column
+        $groupByClause = '';
+        if (!empty($groupBy) && preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $groupBy)) {
+            $groupByClause = " GROUP BY `$groupBy`";
+        }
+        
+        // Validate sum element
+        $selectClause = '*';
+        $sumClause = '';
+        if (!empty($sumElement) && preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $sumElement)) {
+            $selectClause = "* , SUM(`$sumElement`) as sum_$sumElement";
+            $sumClause = " , SUM(`$sumElement`)";
+        }
+        
+        $baseQuery = "FROM `$table_name` $whereClause";
+        
+        $sql = "SELECT $selectClause $baseQuery";
+        $countSql = "SELECT COUNT(*) $baseQuery";
+        $downloadSql = "SELECT * $baseQuery";
+        
+        if (!empty($groupByClause)) {
+            $sql .= $groupByClause;
+            $countSql .= $groupByClause;
+            $downloadSql .= $groupByClause;
+        }
+        
+        if (!empty($orderByClause)) {
+            $sql .= $orderByClause;
+            $downloadSql .= $orderByClause;
+        }
+        
+        if ($limit > 0) {
+            $sql .= " LIMIT $limit";
+            if ($offset > 0) {
+                $sql .= " OFFSET $offset";
+            }
+        }
+        
+        return [
+            'sql' => $sql,
+            'count_sql' => $countSql,
+            'download_sql' => $downloadSql,
+            'params' => $params
+        ];
+    }
+    
+    /**
+     * Execute search query safely
+     * @param string $sql
+     * @param array $params
+     * @param string $className
+     * @return array
+     */
+    public static function executeSearch(string $sql, array $params, string $className): array {
+        try {
+            return $className::findBySql($sql, $params);
+        } catch (Exception $e) {
+            error_log("SecureSearchBuilder executeSearch Error: " . $e->getMessage() . " | SQL: $sql");
+            return [];
+        }
+    }
+    
+    /**
+     * Execute count query safely
+     * @param string $sql
+     * @param array $params
+     * @param string $className
+     * @return int
+     */
+    public static function executeCount(string $sql, array $params, string $className): int {
+        try {
+            $result = $className::count_all_by_sql($sql);
+            // The count_all_by_sql method uses find_by_sql_array which returns array
+            if (is_array($result) && !empty($result)) {
+                return (int)array_shift($result);
+            }
+            return (int)$result;
+        } catch (Exception $e) {
+            error_log("SecureSearchBuilder executeCount Error: " . $e->getMessage() . " | SQL: $sql");
+            return 0;
+        }
+    }
 }
 
 ?>

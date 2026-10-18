@@ -29,10 +29,8 @@ defined('INC_INV') ? null : define('INC_INV', HOME_DIR . DS . 'modules' . DS . '
 
 //load core objects
 require_once(INC_BASICS . DS . 'settings' . DS . "dbsettings.inc");
-defined('DB_SERVER') ? null : define("DB_SERVER", "");
-defined('DB_USER') ? null : define("DB_USER", "");
-defined('DB_PASS') ? null : define("DB_PASS", "");
-defined('DB_NAME') ? null : define("DB_NAME", "");
+// DB constants are now defined in dbsettings.inc from environment variables
+// with secure defaults. Do not override with empty strings.
 
 
 require_once(INC_CLASS . DS . "class.session.inc");

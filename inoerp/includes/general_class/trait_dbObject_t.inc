@@ -341,39 +341,55 @@ trait dbObject_t {
   return !empty($result) ? $result : false;
  }
 
- public static function find_by_fieldVal(array $dieldVal_a) {
-  global $ie;
-  global $dbc;
-  $sql = " SELECT * FROM ";
-  $sql.= static::$table_name;
-  if (count($dieldVal_a) == 1) {
-   foreach ($dieldVal_a as $k => $v) {
-    $sql.= " WHERE " . $k . "= '{$v}' ";
-   }
-  } else if (count($dieldVal_a) > 1) {
-   $k_count = 1;
-   foreach ($dieldVal_a as $k => $v) {
-    if ($k_count == 1) {
-     if (!empty($v)) {
-      $sql.= " WHERE " . $k . "= '{$v}' ";
-     }
-    } else if (!empty($v)) {
-     $sql.= " AND " . $k . "= '{$v}' ";
+/**
+   * Find records by field values using parameterized queries (SQL injection safe)
+   * @param array $fieldVal_a Associative array of column => value
+   * @return array|false
+   */
+  public static function find_by_fieldVal(array $fieldVal_a) {
+    global $ie;
+    global $dbc;
+    
+    if (empty($fieldVal_a)) {
+      return false;
     }
-    $k_count++;
-   }
+    
+    $sql = "SELECT * FROM " . static::$table_name . " WHERE ";
+    $conditions = [];
+    $params = [];
+    
+    foreach ($fieldVal_a as $column => $value) {
+      // Validate column name to prevent SQL injection via column names
+      if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $column)) {
+        continue; // Skip invalid column names
+      }
+      if (!empty($value) || $value === '0' || $value === 0) {
+        $paramName = ':val_' . count($params);
+        $conditions[] = "`$column` = $paramName";
+        $params[$paramName] = $value;
+      }
+    }
+    
+    if (empty($conditions)) {
+      return false;
+    }
+    
+    $sql .= implode(' AND ', $conditions);
+    
+    try {
+      $stmt = $dbc->connection->prepare($sql);
+      foreach ($params as $paramName => $value) {
+        $stmt->bindValue($paramName, $value);
+      }
+      $stmt->execute();
+      $result = $stmt->fetchAll(PDO::FETCH_CLASS);
+    } catch (PDOException $e) {
+      $ie->page_exception = ['dbObject findBy fieldVal Error: ' => $e->getMessage()];
+      error_log("find_by_fieldVal Error: " . $e->getMessage() . " | SQL: $sql");
+      return false;
+    }
+    return !empty($result) ? $result : false;
   }
-// echo $sql;
-  $stmt = $dbc->connection->prepare(" $sql ");
-  try {
-   $stmt->execute();
-   $result = $stmt->fetchAll(PDO::FETCH_CLASS);
-  } catch (PDOException $e) {
-   $ie->page_exception = ['dbObject findBy id Error : ' => $e->getMessage()];
-   echo "Record couldnt be saved!!: " . $e->getMessage();
-  }
-  return !empty($result) ? $result : false;
- }
 
  public function findAll() {
   global $ie;
@@ -438,82 +454,186 @@ trait dbObject_t {
   return !empty($result) ? $result : false;
  }
 
- public static function find_by_parent_id($id, $order_by_field = '', $order_by_seq = 'ASC') {
+public static function find_by_parent_id($id, $order_by_field = '', $order_by_seq = 'ASC') {
   $order_by_field = empty($order_by_field) ? static::$key_column : $order_by_field;
   if (empty($id)) {
    return false;
   }
-  $sql = " SELECT * FROM ";
-  $sql.= static::$table_name;
-  $sql.= " WHERE " . static::$parent_primary_column . " = '{$id}' ";
-  if (!empty($order_by_field)) {
-   $sql.= " ORDER BY {$order_by_field}  ";
-   $sql.= " {$order_by_seq} ";
+  
+  // Validate order_by_field to prevent SQL injection
+  if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $order_by_field)) {
+    $order_by_field = static::$key_column;
   }
-  $result = self::find_by_sql($sql);
-//  echo $sql;
+  // Validate order_by_seq
+  $order_by_seq = strtoupper($order_by_seq);
+  if (!in_array($order_by_seq, ['ASC', 'DESC'])) {
+    $order_by_seq = 'ASC';
+  }
+  
+  $sql = "SELECT * FROM " . static::$table_name . " WHERE " . static::$parent_primary_column . " = :parent_id ";
+  $sql .= " ORDER BY `$order_by_field` $order_by_seq ";
+  
+  try {
+    $result = self::findBySql($sql, [':parent_id' => $id]);
+  } catch (Exception $e) {
+    error_log("find_by_parent_id Error: " . $e->getMessage());
+    return false;
+  }
   return !empty($result) ? $result : false;
  }
 
- public static function find_by_id_array($id) {
-  global $dbc;
-  $sql = "SELECT * FROM " . static::$table_name . " where `" . static::$primary_column . "` ='{$id}'  LIMIT 1";
-  $result_array = static::find_by_sql_array($sql);
-  return !empty($result_array) ? array_shift($result_array) : false;
- }
-
- public static function find_by_keyColumn($columnName_val) {
-  $sql = "SELECT * FROM " . static::$table_name . " where `" . static::$key_column . "` ='{$columnName_val}'  LIMIT 1";
-  $result_array = static::find_by_sql($sql);
-  return !empty($result_array) ? array_shift($result_array) : false;
- }
-
- public static function find_by_ColumnNameVal($columnName, $columnVal, $dependent_fields = '', $hidden_fields = '') {
-  $sql = "SELECT * FROM " . static::$table_name . " where " . $columnName . " LIKE  '%{$columnVal}%'  ";
-  if (!empty($dependent_fields)) {
-   foreach ($dependent_fields as $k => $v) {
-    if (!empty($k) && !empty($v)) {
-     $sql .= " AND $k = '{$v}' ";
+  /**
+   * Find by ID using parameterized query (SQL injection safe)
+   * @param mixed $id
+   * @return array|false
+   */
+  public static function find_by_id_array($id) {
+    global $dbc;
+    $sql = "SELECT * FROM " . static::$table_name . " WHERE `" . static::$primary_column . "` = :id LIMIT 1";
+    try {
+      $stmt = $dbc->connection->prepare($sql);
+      $stmt->bindValue(':id', $id);
+      $stmt->execute();
+      $result_array = $stmt->fetchAll(PDO::FETCH_NUM);
+    } catch (PDOException $e) {
+      error_log("find_by_id_array Error: " . $e->getMessage());
+      return false;
     }
-   }
+    return !empty($result_array) ? array_shift($result_array) : false;
   }
 
-  if (!empty($hidden_fields)) {
-   foreach ($hidden_fields as $k1 => $v1) {
-    if (!empty($k1) && !empty($v1)) {
-     $sql .= " AND $k1 = '{$v1}' ";
+  /**
+   * Find by key column using parameterized query (SQL injection safe)
+   * @param mixed $columnName_val
+   * @return object|false
+   */
+  public static function find_by_keyColumn($columnName_val) {
+    $sql = "SELECT * FROM " . static::$table_name . " WHERE `" . static::$key_column . "` = :key_val LIMIT 1";
+    try {
+      $result_array = static::findBySql($sql, [':key_val' => $columnName_val]);
+    } catch (Exception $e) {
+      error_log("find_by_keyColumn Error: " . $e->getMessage());
+      return false;
     }
-   }
+    return !empty($result_array) ? array_shift($result_array) : false;
   }
-//  echo $sql;
-  $result_array = static::find_by_sql($sql);
-  return !empty($result_array) ? ($result_array) : false;
- }
 
- public static function find_by_oneColumn(array $colmn_details_ap) {
-  if (!empty($colmn_details_ap['column_name'])) {
-   $column_name = $colmn_details_ap['column_name'];
-  } else {
-   return null;
+  /**
+   * Find by column name with LIKE using parameterized query (SQL injection safe)
+   * @param string $columnName
+   * @param string $columnVal
+   * @param array $dependent_fields
+   * @param array $hidden_fields
+   * @return array|false
+   */
+  public static function find_by_ColumnNameVal($columnName, $columnVal, $dependent_fields = [], $hidden_fields = []) {
+    // Validate column name
+    if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $columnName)) {
+      return false;
+    }
+    
+    $sql = "SELECT * FROM " . static::$table_name . " WHERE `$columnName` LIKE :like_val";
+    $params = [':like_val' => '%' . $columnVal . '%'];
+    $paramCount = 1;
+    
+    if (!empty($dependent_fields)) {
+      foreach ($dependent_fields as $k => $v) {
+        if (!empty($k) && !empty($v) && preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $k)) {
+          $paramName = ':dep_' . $paramCount++;
+          $sql .= " AND `$k` = $paramName";
+          $params[$paramName] = $v;
+        }
+      }
+    }
+
+    if (!empty($hidden_fields)) {
+      foreach ($hidden_fields as $k1 => $v1) {
+        if (!empty($k1) && !empty($v1) && preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $k1)) {
+          $paramName = ':hid_' . $paramCount++;
+          $sql .= " AND `$k1` = $paramName";
+          $params[$paramName] = $v1;
+        }
+      }
+    }
+
+    try {
+      $result_array = static::findBySql($sql, $params);
+    } catch (Exception $e) {
+      error_log("find_by_ColumnNameVal Error: " . $e->getMessage());
+      return false;
+    }
+    return !empty($result_array) ? $result_array : false;
   }
-  $column_val = !empty($colmn_details_ap['column_value']) ? $colmn_details_ap['column_value'] : null;
-  $sql = "SELECT * FROM " . static::$table_name . " where `" . $column_name . "` ='{$column_val}'  ";
-  $result_array = static::find_by_sql($sql);
-  return !empty($result_array) ? $result_array : false;
- }
 
- public static function find_by_keyColumn_all($columnName_val) {
-  $sql = "SELECT * FROM " . static::$table_name . " where `" . static::$key_column . "` ='{$columnName_val}' ";
-  $result_array = static::find_by_sql($sql);
-  return !empty($result_array) ? ($result_array) : false;
- }
+  /**
+   * Find by one column using parameterized query (SQL injection safe)
+   * @param array $colmn_details_ap
+   * @return array|false
+   */
+  public static function find_by_oneColumn(array $colmn_details_ap) {
+    if (!empty($colmn_details_ap['column_name'])) {
+      $column_name = $colmn_details_ap['column_name'];
+    } else {
+      return null;
+    }
+    
+    // Validate column name
+    if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $column_name)) {
+      return false;
+    }
+    
+    $column_val = !empty($colmn_details_ap['column_value']) ? $colmn_details_ap['column_value'] : null;
+    $sql = "SELECT * FROM " . static::$table_name . " WHERE `" . $column_name . "` = :col_val";
+    
+    try {
+      $result_array = static::findBySql($sql, [':col_val' => $column_val]);
+    } catch (Exception $e) {
+      error_log("find_by_oneColumn Error: " . $e->getMessage());
+      return false;
+    }
+    return !empty($result_array) ? $result_array : false;
+  }
 
- public static function find_by_keyColumn_array($columnName_val) {
-  global $dbc;
-  $sql = "SELECT * FROM " . static::$table_name . " where `" . static::$columnName . "` ='{$columnName_val}'  LIMIT 1";
-  $result_array = static::find_by_sql_array($sql);
-  return !empty($result_array) ? array_shift($result_array) : false;
- }
+  /**
+   * Find all by key column using parameterized query (SQL injection safe)
+   * @param mixed $columnName_val
+   * @return array|false
+   */
+  public static function find_by_keyColumn_all($columnName_val) {
+    $sql = "SELECT * FROM " . static::$table_name . " WHERE `" . static::$key_column . "` = :key_val";
+    try {
+      $result_array = static::findBySql($sql, [':key_val' => $columnName_val]);
+    } catch (Exception $e) {
+      error_log("find_by_keyColumn_all Error: " . $e->getMessage());
+      return false;
+    }
+    return !empty($result_array) ? $result_array : false;
+  }
+
+  /**
+   * Find by key column (array result) using parameterized query (SQL injection safe)
+   * @param mixed $columnName_val
+   * @return array|false
+   */
+  public static function find_by_keyColumn_array($columnName_val) {
+    global $dbc;
+    // Note: static::$columnName seems like a typo, should be static::$key_column
+    $column = static::$key_column ?? 'id';
+    if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $column)) {
+      $column = 'id';
+    }
+    $sql = "SELECT * FROM " . static::$table_name . " WHERE `" . $column . "` = :key_val LIMIT 1";
+    try {
+      $stmt = $dbc->connection->prepare($sql);
+      $stmt->bindValue(':key_val', $columnName_val);
+      $stmt->execute();
+      $result_array = $stmt->fetchAll(PDO::FETCH_NUM);
+    } catch (PDOException $e) {
+      error_log("find_by_keyColumn_array Error: " . $e->getMessage());
+      return false;
+    }
+    return !empty($result_array) ? array_shift($result_array) : false;
+  }
 
  private static function instantiate($record) {
   $object = new static;

@@ -1,4 +1,14 @@
-*.xcuserstate
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Application
 inoerp_index.php
 test.*
 mailsettings.inc
@@ -6,6 +16,71 @@ inoerp/includes/basics/settings/dbsettings.inc
 inoerp/includes/basics/settings/
 settings/
 *.dbsettings
+
+# Dependencies
+vendor/
+composer.lock
+
+# IDE & Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.phpstorm.meta.php
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs & Cache
+*.log
+logs/
+storage/logs/
+bootstrap/cache/
+var/cache/
+var/log/
+
+# Test & Coverage
+.coverage
+.coverage.*
+coverage/
+build/coverage/
+phpunit.xml
+phpunit.xml.dist.local
+
+# Static Analysis
+.phpstan.cache
+psalm.cache
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Build artifacts
+dist/
+build/
+*.phar
+
+# Database
+*.sql
+*.sqlite
+*.db
+*.dump
+
+# Backup
+*.bak
+*.backup
+*.orig
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
 #################
 ## Eclipse
 #################
