@@ -284,6 +284,7 @@ function ___($msgid) {
  * Alias for gettext.
  */
 function __($msgid) {
+// Temporarily disabled for unit testing - returns ___($msgid) directly
     return ___($msgid);
 }
 

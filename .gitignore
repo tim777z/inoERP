@@ -295,5 +295,11 @@ pip-log.txt
 #Translations
 #*.mo
 
+#Third-party example directories (contain SQL-injectable code not used in production)
+inoerp/tparty/extensions/social_login/hybridauth/examples/
+
+#Vendored third-party lockfiles should not be committed
+inoerp/tparty/**/composer.lock
+
 #Mr Developer
 .mr.developer.cfg
