@@ -2075,7 +2075,7 @@ function ino_strip_html($text, $max_length) {
  $stripped_text = strip_tags($text);
 
  while ($i < strlen($text) && $stripped < strlen($stripped_text) && $stripped < $max_length) {
-  $symbol = $text{$i};
+  $symbol = $text[$i];
   $result .= $symbol;
 
   switch ($symbol) {
@@ -2357,9 +2357,10 @@ class SecureSearchBuilder {
                     $values = array_map('trim', explode(',', $value));
                     $placeholders = [];
                     foreach ($values as $v) {
-                        $paramName = ":param_{$paramCounter++}";
+                        $paramName = ":param_$paramCounter";
                         $placeholders[] = $paramName;
                         $params[$paramName] = $v;
+                        $paramCounter++;
                     }
                     $whereFields[] = "`$column` IN (" . implode(', ', $placeholders) . ")";
                 } else {
@@ -2381,10 +2382,10 @@ class SecureSearchBuilder {
                     $actualValue = substr($value, 1);
                     
                     if (in_array($operator, ['>', '<', '>=', '<='])) {
-                        $paramName = ":param_{$paramCounter++}";
+                        $paramName = ":param_$paramCounter";
                         $whereFields[] = "`$column` $operator $paramName";
                         $params[$paramName] = $actualValue;
-                        $noof_criteria++;
+                        $paramCounter++;
                     }
                 }
             }
@@ -2423,33 +2424,38 @@ class SecureSearchBuilder {
             if (strtolower($value) === 'null') {
                 return ['condition' => "`$column` IS NULL", 'paramCounter' => $paramCounter];
             } else {
-                $paramName = ":param_{$paramCounter++}";
+                $paramName = ":param_$paramCounter";
                 $params[$paramName] = $value;
+                $paramCounter++;
                 return ['condition' => "`$column` = $paramName", 'paramCounter' => $paramCounter];
             }
         } elseif ($firstChar === '=') {
             if (strtolower($restOfString) === 'null') {
                 return ['condition' => "`$column` IS NULL", 'paramCounter' => $paramCounter];
             } else {
-                $paramName = ":param_{$paramCounter++}";
+                $paramName = ":param_$paramCounter";
                 $params[$paramName] = $restOfString;
+                $paramCounter++;
                 return ['condition' => "`$column` = $paramName", 'paramCounter' => $paramCounter];
             }
         } elseif ($firstTwoChars === '!=') {
-            $paramName = ":param_{$paramCounter++}";
+            $paramName = ":param_$paramCounter";
             $params[$paramName] = $restOfString;
+            $paramCounter++;
             return ['condition' => "`$column` != $paramName", 'paramCounter' => $paramCounter];
         } elseif ($firstChar === '>') {
-            $paramName = ":param_{$paramCounter++}";
+            $paramName = ":param_$paramCounter";
             $params[$paramName] = $restOfString;
+            $paramCounter++;
             return ['condition' => "`$column` > $paramName", 'paramCounter' => $paramCounter];
         } elseif ($firstChar === '<') {
-            $paramName = ":param_{$paramCounter++}";
+            $paramName = ":param_$paramCounter";
             $params[$paramName] = $restOfString;
+            $paramCounter++;
             return ['condition' => "`$column` < $paramName", 'paramCounter' => $paramCounter];
         } else {
             // LIKE search (default)
-            $paramName = ":param_{$paramCounter++}";
+            $paramName = ":param_$paramCounter";
             // Escape wildcards for literal search, then add wildcards
             $escapedValue = str_replace(['%', '_'], ['\%', '\_'], $value);
             $params[$paramName] = "%$escapedValue%";

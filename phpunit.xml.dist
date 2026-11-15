@@ -7,11 +7,21 @@
          beStrictAboutOutputDuringTests="true"
          beStrictAboutChangesToGlobalState="true">
     <testsuites>
-        <testsuite name="Unit Tests">
+        <testsuite name="Unit Tests (No DB)">
             <directory>tests/Unit</directory>
+            <env name="APP_ENV" value="testing"/>
+            <env name="DB_SERVER" value="127.0.0.1"/>
+            <env name="DB_NAME" value="inoerp_test"/>
+            <env name="DB_USER" value=""/>
+            <env name="DB_PASS" value=""/>
         </testsuite>
         <testsuite name="Integration Tests">
             <directory>tests/Integration</directory>
+            <env name="APP_ENV" value="testing"/>
+            <env name="DB_SERVER" value="localhost"/>
+            <env name="DB_NAME" value="inoerp_test"/>
+            <env name="DB_USER" value="test_user"/>
+            <env name="DB_PASS" value="test_pass"/>
         </testsuite>
     </testsuites>
     <filter>
@@ -29,11 +39,4 @@
         <log type="coverage-html" target="build/coverage" lowUpperBound="35" highLowerBound="70"/>
         <log type="coverage-clover" target="build/coverage.xml"/>
     </logging>
-    <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="DB_SERVER" value="localhost"/>
-        <env name="DB_NAME" value="inoerp_test"/>
-        <env name="DB_USER" value="test_user"/>
-        <env name="DB_PASS" value="test_pass"/>
-    </php>
 </phpunit>

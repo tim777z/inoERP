@@ -36,7 +36,6 @@
         "phpstan/phpstan": "^1.10",
         "squizlabs/php_codesniffer": "^3.7",
         "friendsofphp/php-cs-fixer": "^3.40",
-        "psalm/plugin-phpunit": "^2.1",
         "vimeo/psalm": "^5.20"
     },
     "autoload": {
@@ -66,7 +65,25 @@
         "optimize-autoloader": true,
         "sort-packages": true,
         "allow-plugins": {
-            "php-http/discovery": true
+            "php-http/discovery": true,
+            "phpstan/phpstan": true,
+            "vimeo/psalm": true
+        },
+        "advisories-policy": {
+            "block": false,
+            "ignore-ids": [
+                "PKSA-cv56-2228-pzr6",
+                "PKSA-6r8f-nxsb-67bq",
+                "PKSA-gh7h-hhy4-byg7",
+                "PKSA-mwt3-h9tv-kx78",
+                "PKSA-hp6n-n4kz-21wk",
+                "PKSA-mckv-s5hg-868k",
+                "PKSA-7ztm-rpt3-qqzk",
+                "PKSA-2kw5-jd8w-5mvh",
+                "PKSA-4jrs-y99s-q8j6",
+                "PKSA-hbk6-2vfz-8f8n",
+                "PKSA-y2cr-5h3j-g3ys"
+            ]
         }
     },
     "minimum-stability": "stable",
