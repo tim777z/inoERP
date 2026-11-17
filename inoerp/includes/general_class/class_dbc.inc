@@ -8,6 +8,13 @@ class dbc {
 // public $pending_transaction;
 
  function __construct() {
+  // Allow mock $dbc to be used for unit testing without MySQL
+  // If a mock MockDbc instance already exists in $GLOBALS['dbc'], use it instead
+  if (isset($GLOBALS['dbc']) && $GLOBALS['dbc'] instanceof MockDbc) {
+    // Mock already configured; skip real connection
+    $this->connection = $GLOBALS['dbc']->connection;
+    return;
+  }
   if(!(DB_SERVER)){
    return false;
   }

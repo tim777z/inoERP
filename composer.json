@@ -83,7 +83,8 @@
                 "PKSA-4jrs-y99s-q8j6",
                 "PKSA-hbk6-2vfz-8f8n",
                 "PKSA-y2cr-5h3j-g3ys"
-            ]
+            ],
+            "mode": "ignore"
         }
     },
     "minimum-stability": "stable",
