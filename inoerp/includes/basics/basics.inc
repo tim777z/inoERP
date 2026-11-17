@@ -28,9 +28,14 @@ defined('INC_INV') ? null : define('INC_INV', HOME_DIR . DS . 'modules' . DS . '
 
 
 //load core objects
-require_once(INC_BASICS . DS . 'settings' . DS . "dbsettings.inc");
-// DB constants are now defined in dbsettings.inc from environment variables
-// with secure defaults. Do not override with empty strings.
+if (defined('TEST_MODE') && TEST_MODE === true) {
+    require_once __DIR__ . '/../../tests/Support/MockDbc.php';
+    $dbc = new MockDbc();
+} else {
+    require_once(INC_BASICS . DS . 'settings' . DS . "dbsettings.inc");
+    // DB constants are now defined in dbsettings.inc from environment variables
+    // with secure defaults. Do not override with empty strings.
+}
 
 
 require_once(INC_CLASS . DS . "class.session.inc");

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ''
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+      MYSQL_DATABASE: inoerp_test
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  app:
+    build: .
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - APP_ENV=testing
+      - DB_SERVER=db
+      - DB_NAME=inoerp_test
+      - DB_USER=root
+      - DB_PASS=
+    depends_on:
+      db:
+        condition: service_healthy
+
+  phpunit:
+    image: php:8.2-cli
+    working_dir: /app
+    volumes:
+      - .:/app
+    depends_on:
+      app:
+        condition: service_healthy
+    command: >
+      bash -c "composer install --no-interaction --prefer-dist --optimize-autoloader
+      && cp .env.example .env
+      && sed -i 's/DB_SERVER=.*/DB_SERVER=127.0.0.1/' .env
+      && sed -i 's/DB_NAME=.*/DB_NAME=inoerp_test/' .env
+      && sed -i 's/DB_USER=.*/DB_USER=root/' .env
+      && sed -i 's/DB_PASS=.*/DB_PASS=/' .env
+      && vendor/bin/phpunit --testdox --coverage-clover=coverage.xml"
+
+volumes:
+  db_data:
